@@ -3,6 +3,7 @@ kagglehub==0.3.11
 keras==3.9.0
 keras_hub==0.20.0
 keras_tuner==1.4.7
+matplotlib==3.10.1
 pandas==2.2.3
 pkuseg==0.0.25
 pypinyin==0.54.0
