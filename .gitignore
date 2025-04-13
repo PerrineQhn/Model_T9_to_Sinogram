@@ -2,5 +2,8 @@ training_t9_to_text copy.ipynb
 **/*/DS_Store
 **/__pycache__/
 *.csv
+*.pkl
 **/*_dataset/
+**/*_venv/
 **/hyperparameter_tuning/
+vectorizers/
