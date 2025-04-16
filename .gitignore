@@ -2,4 +2,8 @@ training_t9_to_text copy.ipynb
 **/*/DS_Store
 **/__pycache__/
 *.csv
-
+**/data/
+**/hyperparameter_tuning/
+**/logs/
+**/models/
+*.keras
