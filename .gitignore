@@ -7,3 +7,6 @@ training_t9_to_text copy.ipynb
 **/*_venv/
 **/hyperparameter_tuning/
 vectorizers/
+model_*.*
+**/models/
+**/logs/
