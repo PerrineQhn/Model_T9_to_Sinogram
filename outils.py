@@ -1,13 +1,12 @@
 import pickle as pk
 import re
+from typing import Dict, List, Tuple, Union
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 import tensorflow as tf
 from pypinyin import lazy_pinyin
-
-from sklearn.metrics import precision_score, recall_score, f1_score
-from typing import List, Tuple, Dict
+from sklearn.metrics import f1_score, precision_score, recall_score, classification_report
 
 
 # -- Partie Prétraitement --
@@ -159,6 +158,7 @@ def build_evaluation_corpus(df: pd.DataFrame, window_size: int = 6) -> pd.DataFr
     return pd.DataFrame(all_triplets, columns=["context", "t9", "target_char"])
 
 
+
 def generate_text(model, input_t9_sequence, context_chars, input_tv, target_tv, max_length=100, context_size=5):
     """
     Génère une séquence de caractères chinois à partir d'une séquence T9 et d'un contexte en sinogrammes.
@@ -188,13 +188,24 @@ def generate_text(model, input_t9_sequence, context_chars, input_tv, target_tv, 
     # Initialiser le contexte avec les caractères fournis
     context = []
     if context_chars:
-        # Vectoriser les caractères de contexte
-        context_ids = target_tv(context_chars).to_tensor(default_value=0).numpy().flatten().tolist()
+        # 1) On wrappe en tf.constant pour forcer un RaggedTensor
+        chars_tensor = tf.constant(context_chars, dtype=tf.string)
+        vect = target_tv(chars_tensor)  # RaggedTensor si ragged=True
+        
+        # 2) Si c'est un RaggedTensor, on densifie ; sinon on garde tel quel
+        if isinstance(vect, tf.RaggedTensor):
+            dense_ids = vect.to_tensor(default_value=0)
+        else:
+            dense_ids = vect
+        
+        # 3) On a désormais un Tensor dense : on récupère les IDs
+        context_ids = dense_ids.numpy().flatten().tolist()
         context.extend(context_ids)
+
     # Remplir avec des zéros si le contexte est trop court
     while len(context) < context_size:
-        context.insert(0, 0)  # Padding avec 0 (sera masqué)
-    # Tronquer si le contexte est trop long
+        context.insert(0, 0)
+    # Tronquer si nécessaire
     context = context[-context_size:]
     
     # Initialiser la séquence générée
@@ -231,17 +242,19 @@ def generate_text(model, input_t9_sequence, context_chars, input_tv, target_tv, 
     return ''.join(generated_chars)
 
 
-def evaluate_char_predictions(references: List[str], predictions: List[str]) -> Dict[str, float]:
+def evaluate_char_predictions(references: List[str], predictions: List[str], output_dict: bool = False) -> Union[str, Dict]:
     """
     Calcule la précision, le rappel et la F1-score pour une liste de chaînes de caractères sinogrammes.
     Chaque paire (ref, pred) est comparée caractère par caractère avec gestion des longueurs différentes.
+    Utilise classification_report pour un tableau détaillé par classe.
 
     Args:
         references (List[str]): Réponses de référence (ground truth)
         predictions (List[str]): Réponses générées par le modèle
+        output_dict (bool): Si True, retourne un dictionnaire; sinon, une chaîne formatée
 
     Returns:
-        Dict[str, float]: Dictionnaire avec 'precision', 'recall', 'f1'
+        Union[str, Dict]: Rapport de classification (chaîne ou dictionnaire selon output_dict)
     """
     y_true, y_pred = [], []
     for ref, pred in zip(references, predictions):
@@ -258,12 +271,29 @@ def evaluate_char_predictions(references: List[str], predictions: List[str]) -> 
             y_true.extend(ref[min_len:])
             y_pred.extend(['[PAD]'] * (len(ref) - min_len))
 
+    # Filtrer les paires avec [PAD]
     mask = [(t != '[PAD]' and p != '[PAD]') for t, p in zip(y_true, y_pred)]
     y_true_f = [t for t, m in zip(y_true, mask) if m]
     y_pred_f = [p for p, m in zip(y_pred, mask) if m]
 
-    return {
-        "precision": precision_score(y_true_f, y_pred_f, average="micro", zero_division=0),
-        "recall":    recall_score(y_true_f, y_pred_f, average="micro", zero_division=0),
-        "f1":        f1_score(y_true_f, y_pred_f, average="micro", zero_division=0)
-    }
+    # Générer le rapport
+    return classification_report(y_true_f, y_pred_f, zero_division=0, output_dict=output_dict)
+
+
+def evaluation_tradi(subset_df, model_name, model, input_tv, target_tv):
+    """
+    Évalue les prédictions de caractères sur un sous-ensemble de données.
+    Args:
+        subset_df (pd.DataFrame): Sous-ensemble de données à évaluer.
+        model_name (str): Nom du modèle.
+        model: Modèle Keras chargé.
+        input_tv: Couche TextVectorization pour les entrées T9.
+        target_tv: Couche TextVectorization pour les caractères cibles.
+    """
+    refs, preds = [], []
+    for _, row in subset_df.iterrows():
+        refs.append(row["target_char"])
+        pred = generate_text(model, row["t9"], row["context"], input_tv, target_tv)
+        preds.append(pred)
+    print(f"Résultats pour {model_name} :")
+    print(classification_report(refs, preds, output_dict=False, zero_division=0))
