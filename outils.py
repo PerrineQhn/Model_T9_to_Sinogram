@@ -88,8 +88,6 @@ def generer_sequence_contextuelle_new(text, pinyin):
 
 
 # -- Partie Modèles --
-
-
 def load_dataset(path):
     return tf.data.Dataset.load(path)
 
